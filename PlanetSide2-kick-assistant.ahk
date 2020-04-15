@@ -13,6 +13,7 @@
 #SingleInstance force
 
 #Include <AutoXYWH>
+#include <GroupBox>
 
 ; # Settings
 targetWindow = ahk_exe PlanetSide2_x64.exe
@@ -25,15 +26,16 @@ listViewHeaders := "Inactive?|Character Name|Last Login|Battle Rank (Prestige Le
 inactiveColumn := 1
 inactiveMark := "x"  ; In the first column ("Inactive?")
 ;  Hotkeys: to be changed in the Hotkeys function below, accordingly
-scrollHotkeyName = Mouse-Forward
-messageHotkeyName = Mouse-Back
+scrollHotkeyName = Forward
+messageHotkeyName = Back
 pasteClipHotkeyName = Ctrl+V
 guiStyle = white ; dark/white
-fontSize := 10
+fontSize := 0 ; 0 = default, 8-10 ok
+alwaysOnTop := true ; Can be toggled via menu
 ; #####
 
 global ScriptTitle, version
-version = 0.1
+version = 0.2
 ScriptTitle = PlanetSide 2 kick assistant v%version%
 
 Init()
@@ -72,55 +74,97 @@ CreateGUI() {
 	global
 	if guiCreated
 		return
-	Gui +Resize +hwndhGUI +MinSize410x320
-	Gui, Font, S%fontSize%
+	Gui +Resize +hwndhGUI +MinSize420x320
+	if (fontSize)
+		Gui, Font, S%fontSize%
 	if (guiStyle = "dark") {
 		Gui, Font, cFFFFFF
 		Gui, Color, 333333, 333333
 	}
-	local w := 800
-	Gui, Add, Text, w%w% vInfoText, Set PlanetSide to window mode, sort Outfit member list (including offline) by name ascending, go to bottom of the list, click the uppermost entry.
 	
-	Gui, Add, Text, Section vImsgText, Ingame message:
+	; For GuiSize (resizing)
+	resizeControls := {w: [], wh: [], y: [], xy: []}
+	
+	local fullWidth := 650
+	Gui, Add, Text, w%fullWidth% vInfoText, Set PlanetSide to window mode, sort Outfit member list (including offline) by name ascending, go to bottom of the list, click the uppermost entry.`nUse the button Delete && Scroll (%scrollHotkeyName%) below to delete the selected row (if marked as inactive) and scroll synchronously here and ingame to the next one.
+	
+	Gui, Add, Text, vImsgText, Ingame message:
 	GuiControlGet, ImsgText, Pos
-	local wEdit := w - ImsgTextW - 5
-	Gui, Add, Edit, ys-2 x+5 w%wEdit% r1 vingameMsg, %ingameMsgDefault%
+	local wEdit := fullWidth - ImsgTextW - 25
+	Gui, Add, Edit, yp-2 x+5 w%wEdit% r1 vingameMsg, %ingameMsgDefault%
+	
+	;~ GroupBox("SettingsGroup", "Settings", 20, 10, "ImsgText|ingameMsg")
 	
 	Gui, Add, Text, xm Section, Members inactive / all:
 	Gui, Add, Text, ys x+5 w100 Left vCounterText, 0 / 0
 	
-	Gui, Add, ListView, xm w%w% r%nListViewRowsVisible% Grid vListView hwndhListView, %listViewHeaders%|Index
+	; ListView
+	Gui, Add, ListView, xm w%fullWidth% r%nListViewRowsVisible% Grid vListView hwndhListView, %listViewHeaders%|Index
+	resizeControls.wh.Push("ListView")
 	
-	Gui, Add, Button, w120 vPasteClipButton gPasteClip, &Paste Clipboard (Ctrl+V)
+	local buttonWidth := 100 + fontSize
+	local rightX := fullWidth - 110
+	;~ local textWidth := fullWidth - 2*(ButtonWidth +10)
 	
-	Gui, Add, Button, wp vJumpToNextInactiveButton gJumpToNextInactive, &Jump (fast)
+	; Paste
+	Gui, Add, Button,  w%buttonWidth% Default vPasteClipButton gPasteClip, &Paste Clipboard (%pasteClipHotkeyName%)
+	resizeControls.y.Push("PasteClipButton")
+	Menu, ListMenu, Add, Paste list from clipboard `t %pasteClipHotkeyName%, PasteClip
+	;~ Gui, Add, Text, x+m w%textWidth% vPasteClipText, Copy the list with all members (including active) and paste it here.
 	
-	;~ Gui, Add, GroupBox, xm
-	Gui, Add, Button, xm wp Default Section vScrollToNextInactiveButton gScrollToNextInactive, Delete && &Scroll (%scrollHotkeyName%)
-	Gui, Add, Button, ys wp vIngameMessageButton gPostIngameMessage, &Ingame Message (%messageHotkeyName%)
+	; Jump
+	Gui, Add, Button, x+m w%buttonWidth% vJumpToNextInactiveButton gJumpToNextInactive, &Jump to next
+	resizeControls.y.Push("JumpToNextInactiveButton")
+	Menu, ListMenu, Add, &Jump to next inactive, JumpToNextInactive
+	;~ Gui, Add, Text, x+m w%textWidth% vJumpToNextInactiveText, Jump to next inactive member in the list (only here)
 	
-	local rightX := w - 110
-	Gui, Add, Button, ys x%rightX% wp vCancelButton gGuiClose wp, &Cancel
+	; Delte & scroll
+	Gui, Add, Button, xm w%buttonWidth% vScrollToNextInactiveButton gScrollToNextInactive, &Delete && Scroll (%scrollHotkeyName%)
+	resizeControls.y.Push("ScrollToNextInactiveButton")
+	Menu, PlanetSideMenu, Add, &Delete sel. inactive && scroll to next`t%scrollHotkeyName%, ScrollToNextInactive
+	;~ Gui, Add, Text, x+m w%textWidth% vScrollToNextInactiveText, Deletes the selected row (if inactive) and scrolls synchronized with ingame list to the next one.
+	
+	;  Ingame message
+	Gui, Add, Button, x+m Section w%ButtonWidth% vIngameMessageButton gPostIngameMessage, &Ingame Message (%messageHotkeyName%)
+	resizeControls.y.Push("IngameMessageButton")
+	Menu, PlanetSideMenu, Add, Post &Ingame Message`t%messageHotkeyName%, PostIngameMessage
+	
+	GroupBox("PS2GroupBox", "Planetside 2", 20, 10, "ScrollToNextInactiveButton|IngameMessageButton")
+	resizeControls.y.Push("PS2GroupBox")
+	
+	; Cancel
+	GuiControlGet, ScrollToNextInactiveButton, Pos
+	local rightY := ScrollToNextInactiveButtonY + ScrollToNextInactiveButtonH - 29
+	Gui, Add, Button, x%rightX% y%rightY% w%buttonWidth% vCancelButton gGuiClose, &Cancel
+	resizeControls.xy.Push("CancelButton")
 	
 	LV_ModifyCol(LV_GetCount("Col"), "Integer")
 	GuiControl, Focus, ScrollToNextInactiveButton
-	guiCreated := true
 	
-	; For GuiSize - excluding listview
-	fullWidthControls := ["InfoText", "IngameMsg"]
-	bottomButtons := ["PasteClipButton", "JumpToNextInactiveButton", "ScrollToNextInactiveButton", "IngameMessageButton"]
+	; Menu
+	Menu, menuBar, Add, &List, :ListMenu
+	Menu, menuBar, Add, &PlanetSide, :PlanetSideMenu
+	
+	Menu, ViewMenu, Add, &Always On Top, AlwaysOnTopToggle
+	alwaysOnTop := !alwaysOnTop 
+	AlwaysOnTopToggle()
+	
+	Menu, menuBar, Add, &View, :ViewMenu
+	Gui, Menu, menuBar
+	
+	guiCreated := true
 }
 
 ; Expand or shrink the ListView in response to the user's resizing of the window.
 GuiSize() {
-	global
+	global resizeControls
 	if A_EventInfo = 1  ; The window has been minimized.  No action needed.
 		return
 	
-	AutoXYWH("wh", "ListView")
-	AutoXYWH("w*", fullWidthControls*)
-	AutoXYWH("y", bottomButtons*)
-	AutoXYWH("xy", "CancelButton")
+	AutoXYWH("w*", resizeControls.w*)
+	AutoXYWH("wh", resizeControls.wh*)
+	AutoXYWH("y*", resizeControls.y*)
+	AutoXYWH("xy", resizeControls.xy*)
 }
 
 ShowGui() {
@@ -128,10 +172,22 @@ ShowGui() {
 	Loop % LV_GetCount()
 		  LV_ModifyCol(A_Index, "AutoHdr")
 	;~ LV_ModifyCol(2, "Sort")
-	Gui, +AlwaysOnTop
 	Gui, Show, AutoSize, %ScriptTitle%
 }
 
+AlwaysOnTopToggle() {
+	global alwaysOnTop
+	if (alwaysOnTop) {
+		Menu, ViewMenu, UnCheck, &Always On Top
+		Gui, -AlwaysOnTop
+		alwaysOnTop := false
+	} else {
+		Menu, ViewMenu, Check, &Always On Top
+		Gui, +AlwaysOnTop
+		alwaysOnTop := true
+	}
+	Gui, Show
+}
 
 ; # Buttons
 
@@ -198,8 +254,6 @@ ScrollToNextInactive() {
 PostIngameMessage() {
 	global ingameMsg, targetWindow
 	Gui, Submit, NoHide
-	MsgBox, 0x40010,, %ingameMsg%
-	return
 	WinActivate, % targetWindow
 	PlanetSideChatMessage(ingameMsg)
 }
