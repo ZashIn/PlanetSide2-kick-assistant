@@ -26,6 +26,7 @@ iChatDelay := 100  ; Delay for chat messages
 listViewHeaders := "Inactive?|Character Name|Last Login|Battle Rank (Prestige Level)|Trident Site Account?"
 inactiveColumn := 1
 inactiveMark := "x"  ; In the first column ("Inactive?")
+searchColumn := 2  ; 0 to disable
 ;  Hotkeys: to be changed in the Hotkeys function below, accordingly
 scrollHotkeyName = Forward
 messageHotkeyName = Back
@@ -63,6 +64,8 @@ Init() {
 	global
 	nInactive := 0
 	nKicks := 0
+	table := []
+	tableOffset := 0
 	guiCreated := false
 	CreateGUI()
 	HotKeys()
@@ -313,14 +316,16 @@ PostIngameMessage() {
 ; Fill the ListView from clipboard
 UpdateListViewFromClip() {
 	global listViewHeaders
-	list := ParseListFromClipBoard()
-	if (list.Length() = 0) {
+	table := ParseListFromClipBoard()
+	if (table.Length() = 0) {
 		MsgBox, 0x40010, Clipboard parsing, Could not parse the clipboard!
 		return
 	}
-	firstLine := list[1]
-	withHeaders := (Trim(firstLine) = listViewHeaders)
-	FillListView(list, withHeaders)
+	; Check for header
+	withHeader := false
+	Loop, Parse, listViewHeaders, "|"
+		 withHeader := table[1, A_Index] = A_LoopField
+	FillListView(table, withHeader)
 	UpdateGuiCounter()
 	ShowGui()
 }
@@ -328,39 +333,53 @@ UpdateListViewFromClip() {
 ; Parse clipboard, lines into array, replacing tabs with "|"
 ParseListFromClipBoard() {
 	clip := Clipboard
-	replaced := RegExReplace(clip, " *\t", "|", repCount)
-	list := []
+	startTime := A_TickCount
+	replaced := RegExReplace(clip, " *\t *", "|", repCount)
 	if (repCount < 1)
-		return list
+		return []
+	list := []
+	i := 0
 	Loop, Parse, replaced, `n, `r
 	{
-		if (Trim(A_LoopField) == "")
+		trimmed := Trim(A_LoopField)
+		if (trimmed == "")
 			continue
-		list.Push(A_LoopField)  ; StrSplit(A_LoopField, "|" )
+		list.Push(StrSplit(trimmed, "|" ))
+		i++
 	}
+	FileAppend % A_TickCount - startTime "ms`n", *
 	return list
 }
 
-; Fill the ListView by the given Array, whith strings (rows, with columns separated by "|")
-FillListView(list, withHeader := false) {
-	global nListViewRowsVisible, inactiveColumn, inactiveMark, nInactive
+; Fill the ListView by the given 2d Array
+; withHeader: the given array includes the headline => sets tableOffset := 1
+; addRowIndex: adds a row index as last column
+FillListView(arr, withHeader := false, addRowIndex := true) {
+	global table, tableOffset, nListViewRowsVisible, inactiveColumn, inactiveMark, nInactive
 		GuiControl, -Redraw, ListView
 		LV_Delete()
 	
-	enum := list.NewEnum()
-	offset := 0
+	enum := arr.NewEnum()
+	table := []
+	tableOffset := 0
+	
 	; Skip header
 	if (withHeader) {
-		enum.Next()
-		offset := 1
+		enum.Next(, head)
+		if (addRowIndex)
+			head.Push("Index")
+		for r, h in head
+			LV_ModifyCol(r,, h)
+		table.Push(head)
+		tableOffset := 1
 	}
 	inactiveIndices := []
 	nInactive := 0
 	
 	While enum[i, row]
 	{
-		row := StrSplit(row, "|" )
-		row.Push(i - offset)  ; Add row index.
+		;~ row := StrSplit(row, "|" )
+		row.Push(i - tableOffset)  ; Add row index.
 		LV_Add("", row*)
 		; Count inactive
 		if (row[inactiveColumn] = inactiveMark)
