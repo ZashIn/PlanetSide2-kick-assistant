@@ -11,6 +11,7 @@
 	License: LGPL v3
 */
 #SingleInstance force
+#NoEnv
 
 #Include <AutoXYWH>
 #include <GroupBox>
@@ -35,7 +36,7 @@ alwaysOnTop := true ; Can be toggled via menu
 ; #####
 
 global ScriptTitle, version
-version = 0.2
+version = 1.0
 ScriptTitle = PlanetSide 2 kick assistant v%version%
 
 Init()
@@ -86,12 +87,14 @@ CreateGUI() {
 	resizeControls := {w: [], wh: [], y: [], xy: []}
 	
 	local fullWidth := 650
-	Gui, Add, Text, w%fullWidth% vInfoText, Set PlanetSide to window mode, sort Outfit member list (including offline) by name ascending, go to bottom of the list, click the uppermost entry.`nUse the button Delete && Scroll (%scrollHotkeyName%) below to delete the selected row (if marked as inactive) and scroll synchronously here and ingame to the next one.
+	Gui, Add, Text, w%fullWidth% vInfoText, Set PlanetSide to window mode, sort Outfit member list (including offline) by name ascending, click the first name of the list.`nUse the button Delete && Scroll (%scrollHotkeyName%) below to delete the selected row (if marked as inactive) and scroll synchronously here and ingame to the next one.
+	resizeControls.w.Push("InfoText")
 	
 	Gui, Add, Text, vImsgText, Ingame message:
 	GuiControlGet, ImsgText, Pos
-	local wEdit := fullWidth - ImsgTextW - 25
+	local wEdit := fullWidth - ImsgTextW - 5
 	Gui, Add, Edit, yp-2 x+5 w%wEdit% r1 vingameMsg, %ingameMsgDefault%
+	resizeControls.w.Push("ingameMsg")
 	
 	;~ GroupBox("SettingsGroup", "Settings", 20, 10, "ImsgText|ingameMsg")
 	
@@ -212,20 +215,57 @@ JumpToNextInactive() {
 
 ; Scroll to next inactive member, in gui and game synchronously
 ScrollToNextInactive() {
-	global targetWindow, nListViewRowsVisible, fastScrollDelay, scrollDelay, hListView
-	i := LV_GetNext()
-	if (i < 2 || !WinExist(targetWindow))
+	global targetWindow, nListViewRowsVisible, fastScrollDelay, scrollDelay, hListView, fromTop, nInactive
+	
+	if (!WinExist(targetWindow))
 		return
 	
-	if (DeleteSelectedInactive())
+	i := LV_GetNext()
+	if (DeleteSelectedInactive()) {
 		LV_Modify(i, "Focus Select Vis")
+		UpdateGuiCounter()
+		i := LV_GetNext()
+	}
 	
 	next := FindNextInactive()
-	if (next < 1)
+	if (next < 1) {
+		MsgBox, 0x40010, Scroller, no more inactive members!
 		return
+	}
 	
 	WinActivate, % targetWindow
-	while (i > next) {
+	; Find minimal distance from top / bottom or current position
+	len := LV_GetCount()
+	d := Abs(i - next)
+	if (next - 1 < d) {
+		; from start
+		Sleep, % fastScrollDelay
+		Send {Home}
+		;~ ControlSend,, {Home}, ahk_id %hListView%
+		LV_Modify(0, "-Select")
+		LV_Modify(1, "Focus Select Vis")
+	} else if (len - next < d) {
+		; from end
+		Sleep, % fastScrollDelay
+		Send {End}
+		;~ ControlSend,, {End}, ahk_id %hListView%
+		LV_Modify(0, "-Select")
+		LV_Modify(len, "Focus Select Vis")
+	}
+	i := LV_GetNext()
+	if (Abs(i - next) > 0) {
+		; Move up
+		aKey = Up
+		pKey = PgUp
+		step := -1
+	} else {
+		; Move down
+		aKey = Down
+		pKey = PgDn
+		step := 1
+	}
+	
+	while (i != next) {
 		IfWinNotActive, % targetWindow
 			break
 		
@@ -233,21 +273,23 @@ ScrollToNextInactive() {
 		; Source: https://www.autohotkey.com/boards/viewtopic.php?f=7&t=678
 		;sendmessage, 0x115, 0, 0,, ahk_id %hListView%
 		
-		if (i - next >= nListViewRowsVisible) {
+		if (Abs(i - next) > nListViewRowsVisible + 1) {
 			; move one page up
 			Sleep, % fastScrollDelay
-			Send, {PgUp}  ; goes one page up (no overlap)
-			ControlSend,, {PgUp}{Up}, ahk_id %hListView%  ; goes one page up (with 1 overlap) + 1 up
-			i := LV_GetNext()
+			Send, {%pKey%}  ; goes one page up (no overlap)
+			;~ ControlSend,, {%pKey%}{%aKey%}, ahk_id %hListView%  ; goes one page up (with 1 overlap) + 1 up
+			LV_Modify(0, "-Select")
+			LV_Modify(i + step*nListViewRowsVisible, "Focus Select Vis")
 		} else {
 			; move one line up
 			Sleep, % scrollDelay
-			Send, {Up}
-			ControlSend,, {Up}, ahk_id %hListView%
-			i--
+			Send, {%aKey%}
+			;~ ControlSend,, {%aKey%}, ahk_id %hListView%
+			LV_Modify(0, "-Select")
+			LV_Modify(i + step, "Focus Select Vis")
 		}
+		i := LV_GetNext()
 	}
-	UpdateGuiCounter()
 }
 
 ; Post the message in the ingame chat
@@ -308,10 +350,10 @@ FillListView(list, withHeader := false) {
 	inactiveIndices := []
 	nInactive := 0
 	
-		While enum[i, row]
+	While enum[i, row]
 	{
 		row := StrSplit(row, "|" )
-		row.Push(i - offset)
+		row.Push(i - offset)  ; Add row index.
 		LV_Add("", row*)
 		; Count inactive
 		if (row[inactiveColumn] = inactiveMark)
@@ -321,8 +363,10 @@ FillListView(list, withHeader := false) {
 	GuiControl, +Redraw, ListView
 	LV_Modify(0, "-Select")
 	rows := LV_GetCount()
-	LV_Modify(rows - nListViewRowsVisible + 1, "Focus Select")
-	LV_Modify(rows, "Vis") ; Jump to last row
+	;~ LV_Modify(rows - nListViewRowsVisible + 1, "Focus Select")
+	;~ LV_Modify(rows, "Vis") ; Jump to last row
+	LV_Modify(1, "Vis Focus Select") ; Jump to first row
+	GuiControl, +Redraw, ListView
 }
 
 ; Update counters in GUI
@@ -334,14 +378,16 @@ UpdateGuiCounter() {
 ; Returns the index of the next inactive member row (or 0)
 ; Starts from the current selected row or optional at the given index.
 FindNextInactive(i := 0) {
-	global inactiveColumn, inactiveMark
+	global inactiveColumn, inactiveMark, nInactive
+	if (!nInactive)
+		return 0
 	i := i > 0 ? i : LV_GetNext()
 	while (--i > 1) {
 		LV_GetText(text, i, inactiveColumn)
 		if (text = inactiveMark)
 			return i
 	}
-	return 0
+	return FindNextInactive(LV_GetCount())
 }
 
 ; Delete the selected row, if marked as inactive member
