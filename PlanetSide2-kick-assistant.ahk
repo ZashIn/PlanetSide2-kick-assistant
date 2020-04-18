@@ -36,7 +36,7 @@ alwaysOnTop := true ; Can be toggled via menu
 ; #####
 
 global ScriptTitle, version
-version = 1.0
+version = 0.3
 ScriptTitle = PlanetSide 2 kick assistant v%version%
 
 Init()
@@ -55,6 +55,7 @@ HotKeys() {
 	; GUI and game
 	Hotkey, XButton2, ScrollToNextInactive  ; scrollHotkeyName
 	Hotkey, XButton1, PostIngameMessage  ; messageHotkeyName
+	HotKey, Esc, StopScroll
 }
 
 
@@ -213,9 +214,15 @@ JumpToNextInactive() {
 	}
 }
 
+StopScroll() {
+	global stopScroll
+	stopScroll := true
+}
+
 ; Scroll to next inactive member, in gui and game synchronously
 ScrollToNextInactive() {
-	global targetWindow, nListViewRowsVisible, fastScrollDelay, scrollDelay, hListView, fromTop, nInactive
+	global targetWindow, nListViewRowsVisible, fastScrollDelay, scrollDelay, hListView, fromTop, nInactive, stopScroll
+	stopScroll := false
 	
 	if (!WinExist(targetWindow))
 		return
@@ -266,7 +273,7 @@ ScrollToNextInactive() {
 	}
 	
 	while (i != next) {
-		IfWinNotActive, % targetWindow
+		If(stopScroll || !WinActive(targetWindow))
 			break
 		
 		; Move one line up
