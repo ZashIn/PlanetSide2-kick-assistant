@@ -36,7 +36,7 @@ alwaysOnTop := true ; Can be toggled via menu
 ; #####
 
 global ScriptTitle, version
-version = 0.3
+version = 0.3.1
 ScriptTitle = PlanetSide 2 kick assistant v%version%
 
 Init()
@@ -260,7 +260,7 @@ ScrollToNextInactive() {
 		LV_Modify(len, "Focus Select Vis")
 	}
 	i := LV_GetNext()
-	if (Abs(i - next) > 0) {
+	if (i - next > 0) {
 		; Move up
 		aKey = Up
 		pKey = PgUp
