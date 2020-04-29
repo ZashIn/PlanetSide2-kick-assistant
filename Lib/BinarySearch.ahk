@@ -7,24 +7,24 @@
 */
 
 /*!
-	Function: BinarySearch(sortedArray, pattern, column := 0, offset := 0, partial := true, skipEmpty := true)
+	Function: BinarySearch
 		Binary search for a sorted list (half interval search), in O(log n).
 		
-		Parameters::
-			sortedList - a sorted list
-			pattern - a search pattern
-			column - (Optional) for 2d arrays: column with the sorted entries
-			offset - (Optional) an offset to start at (to exclude headers)
-			partial - (Optional) find partial matches
-			skipEmpty - (Optional) skip empty values
-			
-		Example:
-			> arr := ["a", "ba1", "ba2", "c"]
-			> for i, v in BinarySearch(arr, "ba")  ; or while ....Next(i, v)
-			> 	...
+	Parameters::
+		sortedList	- a sorted list
+		pattern    	- a search pattern
+		column    	- (Optional) for 2d arrays: column with the sorted entries
+		offset       	- (Optional) an offset to start at (to exclude headers)
+		partial      	- (Optional) find partial matches
+		skipEmpty	- (Optional) skip empty values
 		
-		Returns:
-			Enum[i, v] - index i in sortedArray, value v
+	Example:
+		> arr := ["a", "ba1", "ba2", "c"]
+		> for i, v in BinarySearch(arr, "ba")  ; or while ....Next(i, v)
+		> 	...
+	
+	Returns:
+		Enum[i, v] - index i in sortedArray, value v
 */
 BinarySearch(sortedArray, pattern, column := 0, offset := 0, partial := true, skipEmpty := true) {
 	return new BinarySearchClass(sortedArray, pattern, column, offset, partial, skipEmpty)
@@ -32,22 +32,22 @@ BinarySearch(sortedArray, pattern, column := 0, offset := 0, partial := true, sk
 
 /*!
 	Class: BinarySearchClass
-		Binary search for a sorted list (half interval search), in O(log n).
-		
-		See function above.
+	See: <BinarySearch>
+	If pattern is not given, the class instance is returned, otherwiese a new enum.
 */
 class BinarySearchClass {
-	/*!
-		Constructor: (sortedArray, pattern, column := 0, offset := 0, partial := true, skipEmpty := true)
-		See function @BinarySearch
-	*/
-	__New(sortedArray, pattern, column := 0, offset := 0, partial := true, skipEmpty := true) {
-		for k, v in ["sortedArray", "pattern", "column", "offset", "partial", "skipEmpty"]
+	__New(ByRef sortedArray, pattern := "", column := 0, offset := 0, partial := true, skipEmpty := true) {
+		for k, v in ["sortedArray", "column", "offset", "partial", "skipEmpty"]
 			this[v] := %v%
+		return pattern ? this.Search(pattern) : this
+	}
+	
+	Search(pattern) {
+		this.pattern := pattern
 		this.patternLen := StrLen(pattern)
 		this.midMatchIndex := this.BinarySearch()
 		this.firstMatchIndex := this.midMatchIndex ? this.FirstMatchBefore(this.midMatchIndex) : 0
-		return this._NewEnum()
+		return this._NewEnum() 
 	}
 	
 	_NewEnum() {
@@ -56,7 +56,7 @@ class BinarySearchClass {
 	}
 	
 	Next(ByRef k, ByRef v) {
-		if (++this.i = 0)
+		if (++this.i <= 0)
 			return false
 		isMatch := this.IsMatch(this.GetEntry(this.i))
 		if (isMatch) {
@@ -111,7 +111,7 @@ class BinarySearchClass {
 	
 	; Returns true on match, else false (0). If this.skipEmpty = true and entry = "", an empty string "" is returned.
 	IsMatch(entry) {
-		 if (entry = "" && this.skipEmpty)
+		if (entry = "" && this.skipEmpty)
 			return ""
 		return ((this.partial ? SubStr(entry, 1, this.patternLen) : entry) = this.pattern)
 	}

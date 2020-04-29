@@ -248,16 +248,14 @@ ActivateSearch() {
 
 Search() {
 	global SearchEdit, table, tableOffset, searchColumn
-	static lastSearchPattern, binSearch
+	static binSearch
 	Gui, Submit, NoHide
 	; Search case insensitive
-	if (lastSearchPattern != SearchEdit) {
-		; TODO: search again on change!
-		lastSearchPattern := SearchEdit
-		binSearch := BinarySearch(table, lastSearchPattern, searchColumn, tableOffset, true)
+	if (!binSearch || binSearch.pattern != SearchEdit) {
+		binSearch := BinarySearch(table, SearchEdit, searchColumn, tableOffset, true)
 	}
-	binSearch.Next(i, v)
-	if (!i) {
+	; Get next or first item if no more found (circular).
+	if (!binSearch.Next(i, v) && !((binSearch := binSearch._NewEnum()).Next(i, v))) {
 		MsgBox, 0x40010, Search, %SearchEdit% not found!
 		return
 	}
