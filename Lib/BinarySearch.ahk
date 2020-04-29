@@ -55,8 +55,8 @@ class BinarySearchClass {
 		return this
 	}
 	
-	Next(ByRef k, ByRef v) {
-		if (++this.i <= 0)
+	Next(ByRef k := 0, ByRef v := "") {
+		if (++this.i <= 0 || this.i >= this.sortedArray.Length())
 			return false
 		isMatch := this.IsMatch(this.GetEntry(this.i))
 		if (isMatch) {

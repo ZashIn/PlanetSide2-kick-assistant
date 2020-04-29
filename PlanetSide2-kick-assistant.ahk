@@ -28,6 +28,7 @@ listViewHeaders := "Inactive?|Character Name|Last Login|Battle Rank (Prestige Le
 inactiveColumn := 1
 inactiveMark := "x"  ; In the first column ("Inactive?")
 searchColumn := 2  ; 0 to disable
+addIndexColumn := true  ; Add an index column to the table.
 ;  Hotkeys: to be changed in the Hotkeys function below, accordingly
 scrollHotkeyName = Forward
 messageHotkeyName = Back
@@ -116,7 +117,9 @@ CreateGUI() {
 	; Menu after Paste
 	
 	; ListView
-	Gui, Add, ListView, xm w%fullWidth% r%nListViewRowsVisible% Grid vListView hwndhListView, %listViewHeaders%|Index
+	Gui, Add, ListView, xm w%fullWidth% r%nListViewRowsVisible% Grid vListView hwndhListView gListViewHandler +AltSubmit, % listViewHeaders . (addIndexColumn ?  "|Index" : "")
+	if (addIndexColumn)
+		LV_ModifyCol(LV_GetCount("Col"), "Integer")
 	resizeControls.wh.Push("ListView")
 	
 	local buttonWidth := 100 + fontSize
@@ -157,7 +160,6 @@ CreateGUI() {
 	Gui, Add, Button, x%rightX% y%rightY% w%buttonWidth% vCancelButton gGuiClose, &Cancel
 	resizeControls.xy.Push("CancelButton")
 	
-	LV_ModifyCol(LV_GetCount("Col"), "Integer")
 	GuiControl, Focus, ScrollToNextInactiveButton
 	
 	; Menu
@@ -210,6 +212,13 @@ AlwaysOnTopToggle() {
 	Gui, Show
 }
 
+; ListView
+ListViewHandler() {
+	If (A_GuiEvent = "K" && A_EventInfo = 0x2E) {  ; Delete key
+		DeleteSelectedInactive()
+	}
+}
+
 ; # Buttons
 
 GuiClose() {
@@ -251,11 +260,11 @@ Search() {
 	static binSearch
 	Gui, Submit, NoHide
 	; Search case insensitive
-	if (!binSearch || binSearch.pattern != SearchEdit) {
+	if (!binSearch || table != binSearch.sortedArray || binSearch.pattern != SearchEdit) {
 		binSearch := BinarySearch(table, SearchEdit, searchColumn, tableOffset, true)
 	}
 	; Get next or first item if no more found (circular).
-	if (!binSearch.Next(i, v) && !((binSearch := binSearch._NewEnum()).Next(i, v))) {
+	if (!binSearch.Next(i) && !((binSearch := binSearch._NewEnum()).Next(i))) {
 		MsgBox, 0x40010, Search, %SearchEdit% not found!
 		return
 	}
@@ -278,8 +287,6 @@ ScrollToNextInactive() {
 	
 	i := LV_GetNext()
 	if (DeleteSelectedInactive()) {
-		LV_Modify(i, "Focus Select Vis")
-		UpdateGuiCounter()
 		i := LV_GetNext()
 	}
 	
@@ -361,7 +368,7 @@ PostIngameMessage() {
 
 ; Fill the ListView from clipboard
 UpdateListViewFromClip() {
-	global listViewHeaders
+	global listViewHeaders, addIndexColumn
 	table := ParseListFromClipBoard()
 	if (table.Length() = 0) {
 		MsgBox, 0x40010, Clipboard parsing, Could not parse the clipboard!
@@ -370,8 +377,9 @@ UpdateListViewFromClip() {
 	; Check for header
 	withHeader := false
 	Loop, Parse, listViewHeaders, "|"
-		 withHeader := table[1, A_Index] = A_LoopField
-	FillListView(table, withHeader)
+		if !(withHeader := table[1, A_Index] = A_LoopField)
+			break
+	FillListView(table, withHeader, addIndexColumn)
 	UpdateGuiCounter()
 	ShowGui()
 }
@@ -412,8 +420,15 @@ FillListView(arr, withHeader := false, addRowIndex := true) {
 		enum.Next(, head)
 		if (addRowIndex)
 			head.Push("Index")
-		for r, h in head
-			LV_ModifyCol(r,, h)
+		; Delete all columns
+		nCols := LV_GetCount("Col")
+		while (nCols > 0)
+			LV_DeleteCol(nCols--)
+		; Insert columns (names)
+		for c, h in head
+			LV_InsertCol(c,, h)
+		if (addRowIndex)
+			LV_ModifyCol(LV_GetCount("Col"), "Integer")
 		table.Push(head)
 		tableOffset := 1
 	}
@@ -422,8 +437,8 @@ FillListView(arr, withHeader := false, addRowIndex := true) {
 	
 	While enum[i, row]
 	{
-		;~ row := StrSplit(row, "|" )
-		row.Push(i - tableOffset)  ; Add row index.
+		if (addRowIndex)
+			row.Push(i - tableOffset)  ; Add row index.
 		LV_Add("", row*)
 		table.Push(row)
 		; Count inactive
@@ -462,14 +477,16 @@ FindNextInactive(i := 0) {
 
 ; Delete the selected row, if marked as inactive member
 DeleteSelectedInactive() {
-	global inactiveColumn, inactiveMark, nInactive
+	global inactiveColumn, inactiveMark, nInactive, table, tableOffset
 	i := LV_GetNext()
 	LV_GetText(text, i, inactiveColumn)
 	if (text = inactiveMark) {
+		table.RemoveAt(tableOffset + i)
 		LV_Delete(i)
 		nInactive--
-		nKicks++
+		;~ nKicks++
 		UpdateGuiCounter()
+		LV_Modify(i, "Focus Select Vis")
 		return i
 	}
 	return 0
